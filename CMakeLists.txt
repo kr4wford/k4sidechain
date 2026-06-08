@@ -2,9 +2,21 @@ cmake_minimum_required(VERSION 3.22)
 
 project(k4SideChain VERSION 1.0.0 LANGUAGES C CXX)
 
-# Point at the JUCE checkout sitting next to this project
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../JUCE
-                 ${CMAKE_BINARY_DIR}/JUCE)
+# Use a JUCE checkout sitting next to this project if present (fast local
+# builds); otherwise fetch the latest JUCE 8 automatically (CI, fresh clones).
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../JUCE/CMakeLists.txt")
+    message(STATUS "k4SideChain: using local JUCE at ../JUCE")
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../JUCE
+                     ${CMAKE_BINARY_DIR}/JUCE)
+else()
+    message(STATUS "k4SideChain: fetching JUCE via FetchContent")
+    include(FetchContent)
+    FetchContent_Declare(JUCE
+        GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
+        GIT_TAG        master          # latest JUCE 8
+        GIT_SHALLOW    TRUE)
+    FetchContent_MakeAvailable(JUCE)
+endif()
 
 juce_add_plugin(k4SideChain
     COMPANY_NAME            "k4 Audio"

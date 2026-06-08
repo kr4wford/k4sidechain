@@ -23,6 +23,34 @@ K4SideChainProcessor::K4SideChainProcessor()
 {
     visBufferDry.assign (visFifoSize, 0.0f);
     visBufferWet.assign (visFifoSize, 0.0f);
+
+    // Latency only changes when lookahead changes; handle it off the audio thread.
+    apvts.addParameterListener (ids::lookahead, this);
+}
+
+K4SideChainProcessor::~K4SideChainProcessor()
+{
+    apvts.removeParameterListener (ids::lookahead, this);
+}
+
+void K4SideChainProcessor::parameterChanged (const juce::String& paramID, float newValue)
+{
+    if (paramID == ids::lookahead)
+        updateLatencyFromLookahead (newValue);
+}
+
+void K4SideChainProcessor::updateLatencyFromLookahead (float lookaheadMs)
+{
+    const double sr = getSampleRate();
+    if (sr <= 0.0)
+        return;
+
+    const int maxLook = static_cast<int> (0.010 * sr) + 1;
+    const int latency = juce::jlimit (0, maxLook,
+        static_cast<int> (lookaheadMs * 0.001f * static_cast<float> (sr)));
+
+    if (latency != getLatencySamples())
+        setLatencySamples (latency);
 }
 
 void K4SideChainProcessor::pushVisualizerSamples (const float* dry, const float* wet, int n)
@@ -148,6 +176,8 @@ void K4SideChainProcessor::prepareToPlay (double sampleRate, int samplesPerBlock
     const auto sz = static_cast<size_t> (juce::jmax (1, samplesPerBlock));
     monoDry.assign (sz, 0.0f);
     monoWet.assign (sz, 0.0f);
+
+    updateLatencyFromLookahead (apvts.getRawParameterValue (ids::lookahead)->load());
 }
 
 void K4SideChainProcessor::processBlock (juce::AudioBuffer<float>& buffer,
@@ -199,10 +229,7 @@ void K4SideChainProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     else
         engine.process (mainBus, scBus);
 
-    // Report lookahead latency to the host if it changed.
-    const int latency = engine.getLatencySamples();
-    if (latency != getLatencySamples())
-        setLatencySamples (latency);
+    // (Latency is updated off the audio thread via the lookahead param listener.)
 
     // Capture the wet (post-processing) signal and push the dry/wet pair.
     if (feedViz)

@@ -3,11 +3,12 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "SidechainEngine.h"
 
-class K4SideChainProcessor : public juce::AudioProcessor
+class K4SideChainProcessor : public juce::AudioProcessor,
+                             private juce::AudioProcessorValueTreeState::Listener
 {
 public:
     K4SideChainProcessor();
-    ~K4SideChainProcessor() override = default;
+    ~K4SideChainProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
@@ -43,6 +44,9 @@ public:
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
+
+    void parameterChanged (const juce::String& paramID, float newValue) override;
+    void updateLatencyFromLookahead (float lookaheadMs);
 
     void pushVisualizerSamples (const float* dry, const float* wet, int n);
 

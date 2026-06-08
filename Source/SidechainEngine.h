@@ -64,9 +64,12 @@ private:
     int    numChannels    = 2;
     int    lookaheadSamples = 0;
 
-    float  envelope     = 0.0f;   // smoothed sidechain level (linear)
     float  rmsAccum     = 0.0f;   // running mean-square for RMS detector
+    float  smoothedGain = 1.0f;   // attack/release-smoothed output gain
     float  currentGrDb  = 0.0f;
+
+    // Click-free makeup gain (ramped across each block).
+    juce::SmoothedValue<float> makeupSmoother { 1.0f };
 
     // Delay line for lookahead on the main signal.
     juce::AudioBuffer<float> delayBuffer;

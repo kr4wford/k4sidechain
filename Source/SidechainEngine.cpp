@@ -10,16 +10,19 @@ void SidechainEngine::prepare (double newSampleRate, int maxBlockSize, int numMa
     const int maxLookahead = static_cast<int> (0.010 * sampleRate) + 1;
     delayBuffer.setSize (numChannels, maxLookahead + maxBlock, false, true, true);
 
+    // ~20 ms ramp removes zipper noise when makeup is dragged.
+    makeupSmoother.reset (sampleRate, 0.02);
     reset();
 }
 
 void SidechainEngine::reset()
 {
-    envelope      = 0.0f;
     rmsAccum      = 0.0f;
+    smoothedGain  = 1.0f;
     currentGrDb   = 0.0f;
     delayWritePos = 0;
     delayBuffer.clear();
+    makeupSmoother.setCurrentAndTargetValue (1.0f);
 }
 
 float SidechainEngine::computeTargetGain (float controlDb) const
@@ -73,22 +76,22 @@ void SidechainEngine::process (juce::AudioBuffer<float>& mainBuffer,
         const float t = juce::jmax (0.1f, ms) * 0.001f;
         return std::exp (-1.0f / (static_cast<float> (sampleRate) * t));
     };
+    // Attack/release now smooth the GAIN itself, so even the gate's hard
+    // on/off target is turned into a click-free fade.
     const float attCoef = coefFor (params.attackMs);
     const float relCoef = coefFor (params.releaseMs);
 
-    // RMS averaging window tracks the attack time, bounded for stability.
-    const float rmsCoef = std::exp (-1.0f / (static_cast<float> (sampleRate)
-                                             * juce::jlimit (0.005f, 0.5f,
-                                                             params.attackMs * 0.001f)));
+    // Fixed, modest RMS window so detection no longer fights attack/release.
+    const float rmsCoef = std::exp (-1.0f / (static_cast<float> (sampleRate) * 0.010f));
 
-    const float makeupGain = juce::Decibels::decibelsToGain (params.makeupDb);
-    const int   delayLen   = delayBuffer.getNumSamples();
+    makeupSmoother.setTargetValue (juce::Decibels::decibelsToGain (params.makeupDb));
+    const int delayLen = delayBuffer.getNumSamples();
 
     float maxGrDb = 0.0f;
 
     for (int n = 0; n < numSamples; ++n)
     {
-        // --- Detector: collapse sidechain to a mono level ---
+        // --- Detector: collapse sidechain to a mono level (instantaneous) ---
         float scSample = 0.0f;
         for (int ch = 0; ch < scChans; ++ch)
             scSample += sidechainBuffer.getSample (ch, n);
@@ -106,14 +109,17 @@ void SidechainEngine::process (juce::AudioBuffer<float>& mainBuffer,
             level = std::abs (scSample);
         }
 
-        // --- Attack/release smoothing of the detected level ---
-        const float coef = level > envelope ? attCoef : relCoef;
-        envelope = coef * envelope + (1.0f - coef) * level;
+        const float controlDb  = juce::Decibels::gainToDecibels (level, -100.0f);
+        const float targetGain = computeTargetGain (controlDb);
 
-        const float controlDb = juce::Decibels::gainToDecibels (envelope, -100.0f);
-        const float gain      = computeTargetGain (controlDb);
+        // --- Attack/release smoothing of the gain (attack = ducking harder) ---
+        const float coef = targetGain < smoothedGain ? attCoef : relCoef;
+        smoothedGain = coef * smoothedGain + (1.0f - coef) * targetGain;
 
-        maxGrDb = juce::jmax (maxGrDb, -juce::Decibels::gainToDecibels (gain, -100.0f));
+        const float makeup = makeupSmoother.getNextValue();
+
+        maxGrDb = juce::jmax (maxGrDb,
+                              -juce::Decibels::gainToDecibels (smoothedGain, -100.0f));
 
         // --- Apply gain to the (optionally delayed) main signal ---
         for (int ch = 0; ch < mainChans; ++ch)
@@ -128,11 +134,11 @@ void SidechainEngine::process (juce::AudioBuffer<float>& mainBuffer,
 
                 const float delayed = dl[readIdx];
                 dl[writeIdx] = main[n];
-                main[n] = delayed * gain * makeupGain;
+                main[n] = delayed * smoothedGain * makeup;
             }
             else
             {
-                main[n] *= gain * makeupGain;
+                main[n] *= smoothedGain * makeup;
             }
         }
     }

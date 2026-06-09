@@ -32,6 +32,7 @@ private:
 
     WaveformScope  visualizer;
     juce::Label    titleLabel;
+    juce::Label    versionLabel;
 
     juce::ComboBox modeBox;
     juce::Label    modeLabel;

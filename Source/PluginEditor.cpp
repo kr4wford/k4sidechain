@@ -18,6 +18,14 @@ K4SideChainEditor::K4SideChainEditor (K4SideChainProcessor& p)
     titleLabel.setColour (juce::Label::textColourId, juce::Colours::white);
     addAndMakeVisible (titleLabel);
 
+    // Small version readout (top-right) so users can check they're up to date.
+    versionLabel.setText ("v" JucePlugin_VersionString, juce::dontSendNotification);
+    versionLabel.setJustificationType (juce::Justification::centredRight);
+    versionLabel.setFont (juce::FontOptions (12.0f));
+    versionLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.55f));
+    versionLabel.setTooltip ("Plugin version — check the GitHub Releases page for the latest");
+    addAndMakeVisible (versionLabel);
+
     modeLabel.setText ("Mode", juce::dontSendNotification);
     modeLabel.setJustificationType (juce::Justification::centred);
     modeLabel.setColour (juce::Label::textColourId, juce::Colours::white);
@@ -104,6 +112,7 @@ void K4SideChainEditor::resized()
 
     // Header strip.
     auto header = getLocalBounds().removeFromTop (40).reduced (12, 6);
+    versionLabel.setBounds (header.removeFromRight (60));
     titleLabel.setBounds (header.removeFromLeft (200));
 
     // Controls sit over the lower portion of the background.
